@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Watermarking</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <!-- Sticky Glass Header -->
+  <header class="header">
+    <div class="container">
+      <a href="index.html" class="logo-container">
+        <div class="logo">Sv3</div>
+        <div class="logo-text">StegoSuite</div>
+      </a>
+      <nav class="nav">
+        <a href="index.html">Overview</a>
+        <a href="steganography.html">Steganography</a>
+        <a href="watermark.html" class="active">Watermarking</a>
+        <a href="rsa.html">RSA (Edu)</a>
+        <a href="webcrypto.html">WebCrypto</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main-content container">
+    <style>
+      @media (min-width: 900px) {
+        .crypto-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; align-items: start; }
+      }
+    </style>
+    <div class="crypto-layout">
+      <div class="card">
+        <label>Base image</label>
+        <div id="wmDropZone" class="drop-zone">
+          <span class="drop-icon">🖼️</span>
+          <div class="drop-text">Drag & drop image here</div>
+          <div class="drop-sub">or click to browse</div>
+          <input id="wmImage" type="file" accept="image/*" />
+        </div>
+        <div id="wmFileName" class="small mb-4" style="color:var(--text-muted);text-align:center"></div>
+      <label>Watermark text</label>
+      <input id="wmText" type="text" class="field" placeholder="© YourName">
+      <label>Text color</label>
+      <input id="wmColor" type="color" value="#ffffff" class="field" style="height:40px;padding:4px" />
+      <div style="display:flex;gap:8px">
+        <label style="flex:1">Font size <input id="wmSize" type="range" min="12" max="72" value="28" style="width:100%"></label>
+        <label>Opacity <input id="wmOp" type="range" min="10" max="100" value="40" style="width:100%"></label>
+      </div>
+      <label>Position</label>
+      <select id="wmPos" class="field">
+        <option value="bottom-right" selected>Bottom right</option>
+        <option value="bottom-left">Bottom left</option>
+        <option value="top-right">Top right</option>
+        <option value="top-left">Top left</option>
+        <option value="center">Center</option>
+      </select>
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <button id="applyWm">Apply Watermark</button>
+        <button id="clearWm" class="ghost">Clear</button>
+      </div>
+
+        <div style="margin-top:20px">
+          <label>Preview</label>
+          <div class="preview card" style="padding:16px; display:flex; flex-direction:column; align-items:center; background:var(--bg-base)">
+            <canvas id="wmCanvas" width="640" height="360" style="max-width:100%; border:1px solid var(--border-dim); border-radius:var(--radius-sm)"></canvas>
+            <div style="margin-top:16px">
+              <a id="wmDownload" style="display:none; text-decoration:none;"><button class="success">📥 Download PNG</button></a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="card">
+        <h4 style="margin-bottom:8px;color:var(--text-main)">Tips</h4>
+        <p class="small">Adjust size & opacity to make watermark visible but unobtrusive. Use PNG originals to maintain quality.</p>
+      </aside>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container">Watermarking — client-side, no server required.</div>
+  </footer>
+
+<script src="assets/ui.js"></script>
+<script>
+let wmImg=null;
+
+UI.setupDragDrop('wmDropZone', 'wmImage', (file) => {
+  document.getElementById('wmFileName').textContent = file.name;
+  const img=new Image(); 
+  img.onload=()=>{ 
+    wmImg=img; 
+    const c=document.getElementById('wmCanvas'); 
+    c.width=img.width; 
+    c.height=img.height; 
+    c.getContext('2d').drawImage(img,0,0); 
+  }; 
+  img.src=URL.createObjectURL(file);
+});
+
+document.getElementById('applyWm').addEventListener('click', ()=>{
+  if(!wmImg){ alert('Upload an image'); return; }
+  const text=document.getElementById('wmText').value||''; const size=document.getElementById('wmSize').value; const op=document.getElementById('wmOp').value/100; const pos=document.getElementById('wmPos').value; const color=document.getElementById('wmColor').value;
+  const c=document.getElementById('wmCanvas'); const ctx=c.getContext('2d'); ctx.clearRect(0,0,c.width,c.height); ctx.drawImage(wmImg,0,0);
+  ctx.font = `${size}px Inter, Arial`; ctx.textBaseline='bottom';
+  // apply chosen color with opacity
+  const rgb = hexToRgb(color) || {r:255,g:255,b:255}; ctx.fillStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${op})`;
+  const w = ctx.measureText(text).width; let x=12, y=c.height-12;
+  switch(pos){ case 'bottom-right': x=c.width-w-12; y=c.height-12; break; case 'bottom-left': x=12; y=c.height-12; break; case 'top-right': x=c.width-w-12; y=size+12; break; case 'top-left': x=12; y=size+12; break; case 'center': x=(c.width-w)/2; y=c.height/2 + size/2; break;}
+  if(text) ctx.fillText(text, x, y);
+  c.toBlob((b)=>{ const url=URL.createObjectURL(b); const a=document.getElementById('wmDownload'); a.href=url; a.style.display='inline-flex'; a.download='watermarked.png'; UI.showToast('Watermark applied', 'success'); }, 'image/png');
+});
+
+// helper
+function hexToRgb(hex) { if(!hex) return null; const parsed = hex.replace('#',''); if(parsed.length===3){ return {r:parseInt(parsed[0]+parsed[0],16), g:parseInt(parsed[1]+parsed[1],16), b:parseInt(parsed[2]+parsed[2],16)} } if(parsed.length===6){ return {r:parseInt(parsed.slice(0,2),16), g:parseInt(parsed.slice(2,4),16), b:parseInt(parsed.slice(4,6),16)} } return null; }
+</script>
+</body>
+</html>

@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Steganography — RSA Encrypt & Decode</title>
+<meta name="description" content="Hide secret messages inside images using RSA encryption and LSB steganography. Generate RSA keys, encrypt with public key, embed into image, and decode with private key."/>
+<link rel="stylesheet" href="assets/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+</head>
+<body>
+  <!-- Sticky Glass Header -->
+  <header class="header">
+    <div class="container">
+      <a href="index.html" class="logo-container">
+        <div class="logo">Sv3</div>
+        <div class="logo-text">StegoSuite</div>
+      </a>
+      <nav class="nav">
+        <a href="index.html">Overview</a>
+        <a href="steganography.html" class="active">Steganography</a>
+        <a href="watermark.html">Watermarking</a>
+        <a href="rsa.html">RSA (Edu)</a>
+        <a href="webcrypto.html">WebCrypto</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main-content container">
+    <style>
+      @media (min-width: 900px) {
+        .crypto-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; align-items: start; }
+      }
+    </style>
+    <div class="crypto-layout">
+      <div class="card">
+
+      <!-- ─── Main Tabs ─── -->
+      <div class="tab-bar">
+        <button id="tabKeys" class="active">🔑 RSA Keys</button>
+        <button id="tabEncrypt">🔒 Encrypt &amp; Embed</button>
+        <button id="tabDecode">🔓 Decode &amp; Decrypt</button>
+      </div>
+
+      <!-- ═══════════════════════════════════════ -->
+      <!--          STEP 1: RSA KEY GENERATION     -->
+      <!-- ═══════════════════════════════════════ -->
+      <section id="secKeys">
+        <h2 style="margin-bottom:4px">Step 1 — Generate RSA Key Pair</h2>
+        <p class="small">Generate your keys first. The <strong>public key</strong> encrypts the message before embedding, and the <strong>private key</strong> decrypts it after extraction.</p>
+
+        <label>Key size (bits)</label>
+        <div class="bit-select" id="bitSelect">
+          <button data-bits="512">512</button>
+          <button data-bits="1024" class="active">1024</button>
+          <button data-bits="2048">2048</button>
+        </div>
+
+        <div style="margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button id="generateBtn" class="success">Generate Key Pair</button>
+          <span id="keyStatus" class="status-badge waiting">No keys generated</span>
+        </div>
+
+        <div id="keygenProgress" style="display:none;margin-top:12px">
+          <div class="small" style="color:var(--warning)">⏳ Generating primes… This may take a few seconds for larger keys.</div>
+          <div style="margin-top:8px;height:3px;background:rgba(0,0,0,0.3);border-radius:2px;overflow:hidden">
+            <div id="keygenBar" style="width:0;height:100%;background:linear-gradient(90deg,var(--accent),#8b5cf6);transition:width 0.3s;border-radius:2px"></div>
+          </div>
+        </div>
+
+        <div id="keygenResults" style="display:none;margin-top:16px">
+          <div class="divider"></div>
+
+          <label><span class="key-label pub">🔓 Public Key (share this — used for encrypting)</span></label>
+          <div class="key-display" id="pubKeyDisplay">
+            <button class="copy-btn ghost" onclick="copyKeyText('pubKeyDisplay')">Copy</button>
+          </div>
+
+          <label style="margin-top:16px"><span class="key-label priv">🔐 Private Key (keep secret — used for decrypting)</span></label>
+          <div class="key-display" id="privKeyDisplay">
+            <button class="copy-btn ghost" onclick="copyKeyText('privKeyDisplay')">Copy</button>
+          </div>
+
+          <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+            <button id="downloadPubKey" class="ghost" style="font-size:0.82rem">📥 Download Public Key</button>
+            <button id="downloadPrivKey" class="ghost" style="font-size:0.82rem">📥 Download Private Key</button>
+          </div>
+
+          <div style="margin-top:14px;padding:12px;background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.2);border-radius:var(--radius-sm)">
+            <div class="small" style="color:var(--success)">✅ Keys ready! Now go to <strong>Encrypt & Embed</strong> to hide a message in an image, or <strong>Decode & Decrypt</strong> to extract one.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════════════════════════════════ -->
+      <!--          STEP 2: ENCRYPT & EMBED        -->
+      <!-- ═══════════════════════════════════════ -->
+      <section id="secEncrypt" style="display:none">
+        <h2 style="margin-bottom:4px">Step 2 — Encrypt &amp; Embed into Image</h2>
+        <p class="small">Your message is encrypted using the RSA public key (hybrid RSA+AES for any length), then embedded into the image using LSB steganography.</p>
+
+        <label>Base image (PNG recommended)</label>
+        <div id="encDropZone" class="drop-zone">
+          <span class="drop-icon">🖼️</span>
+          <div class="drop-text">Drag & drop your base image here</div>
+          <div class="drop-sub">or click to browse</div>
+          <input id="encImage" type="file" accept="image/*" />
+        </div>
+
+        <label>Secret message to hide</label>
+        <textarea id="encText" rows="4" class="field" placeholder="Type your secret message here..."></textarea>
+
+        <label>RSA Public Key</label>
+        <textarea id="encPubKey" rows="4" class="field" style="font-family:var(--font-mono);font-size:0.78rem" placeholder="Paste a public key PEM here, or click 'Load from Session' below..."></textarea>
+        <div style="margin-top:6px">
+          <button id="useGenPubEnc" class="ghost" style="font-size:0.82rem;padding:6px 12px">Load from Session</button>
+        </div>
+
+        <label>Preview scale</label>
+        <input id="encScale" type="range" min="25" max="200" value="100" class="field"/>
+
+        <div style="margin-top:12px;display:flex;gap:8px">
+          <button id="embedBtn">🔒 Encrypt &amp; Embed</button>
+          <button id="clearEnc" class="ghost">Clear</button>
+        </div>
+
+        <div style="margin-top:14px; display:none" id="encCipherContainer">
+          <label>Generated Ciphertext (Embedded)</label>
+          <div class="key-display" id="encCipherOutput" style="min-height:60px"></div>
+        </div>
+
+        <div style="margin-top:14px">
+          <label>Preview</label>
+          <div class="preview card" style="padding:12px">
+            <canvas id="encCanvas" width="640" height="360"></canvas>
+            <div class="small" id="encMeta"></div>
+            <div style="margin-top:8px">
+              <a id="encDownload" class="ghost" download="stego.png" style="display:none">Download PNG</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════════════════════════════════ -->
+      <!--          STEP 3: DECODE & DECRYPT       -->
+      <!-- ═══════════════════════════════════════ -->
+      <section id="secDecode" style="display:none">
+        <h2 style="margin-bottom:4px">Step 3 — Extract &amp; Decrypt</h2>
+        <p class="small">Extract the hidden ciphertext from a stego image, then decrypt it using your RSA private key.</p>
+
+        <label>1. Stego Image (Extracts Ciphertext)</label>
+        <div id="decDropZone" class="drop-zone">
+          <span class="drop-icon">🖼️</span>
+          <div class="drop-text">Drag & drop your stego image here</div>
+          <div class="drop-sub">or click to browse</div>
+          <input id="decImage" type="file" accept="image/*" />
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px">
+          <button id="extractBtn" class="success">🔍 Extract Ciphertext</button>
+        </div>
+
+        <label>2. Ciphertext (Extracted from image or pasted manually)</label>
+        <textarea id="decCiphertext" rows="4" class="field" style="font-family:var(--font-mono);font-size:0.78rem" placeholder='Paste JSON ciphertext or extract from an image...'></textarea>
+
+        <label>3. RSA Private Key</label>
+        <textarea id="decPrivKey" rows="4" class="field" style="font-family:var(--font-mono);font-size:0.78rem" placeholder="Paste the private key PEM here..."></textarea>
+        <div style="margin-top:6px">
+          <button id="useGenPrivDec" class="ghost" style="font-size:0.82rem;padding:6px 12px">Load from Session</button>
+        </div>
+
+        <div style="margin-top:16px;display:flex;gap:8px">
+          <button id="decryptBtn">🔓 Decrypt Message</button>
+          <button id="clearDec" class="ghost">Clear</button>
+        </div>
+
+        <div style="margin-top:24px">
+          <label>Decrypted Message</label>
+          <div class="extractedBox card">
+            <div id="decodedText" class="small" style="color:var(--text-muted)">Decoded text will appear here...</div>
+          </div>
+        </div>
+      </section>
+
+      </div>
+
+      <!-- ─── Sidebar ─── -->
+      <aside class="card">
+        <h4 style="margin-bottom:8px;color:var(--text-main)">How it works</h4>
+        <p class="small">This tool combines <strong>RSA asymmetric encryption</strong> with <strong>LSB steganography</strong>:</p>
+        <ul class="small" style="margin-left:16px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
+          <li><strong>Step 1</strong> — Generate an RSA key pair (public + private).</li>
+          <li><strong>Step 2</strong> — Enter your message, encrypt it with the <em>public key</em> (hybrid RSA+AES), then embed the ciphertext into an image using Least Significant Bit encoding.</li>
+          <li><strong>Step 3</strong> — To decode, upload the stego image and provide the <em>private key</em>. The hidden ciphertext is extracted and decrypted.</li>
+        </ul>
+        <h4 style="margin-bottom:8px;color:var(--text-main)">Why RSA?</h4>
+        <ul class="small" style="margin-left:16px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
+          <li>No shared password — only the private key holder can decrypt.</li>
+          <li>You can share the public key openly.</li>
+          <li>Hybrid RSA+AES handles messages of any length.</li>
+        </ul>
+        <h4 style="margin-bottom:8px;color:var(--text-main)">Tips</h4>
+        <ul class="small" style="margin-left:16px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
+          <li>Always use <strong>PNG</strong> — JPEG compression destroys hidden bits.</li>
+          <li>Larger images can hold more data.</li>
+          <li><strong>Save your private key</strong> — without it, decryption is impossible.</li>
+        </ul>
+      </aside>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container">Steganography + RSA — all processing runs in your browser. No data leaves this page.</div>
+  </footer>
+
+<script src="assets/ui.js"></script>
+<script src="assets/storage.js"></script>
+<script src="assets/stego.js"></script>
+<script src="assets/rsa.js"></script>
+<script src="assets/webcrypto.js"></script>
+<script>
+// ═══════════════════════════════════════════════
+// Steganography + RSA — Integrated Logic
+// ═══════════════════════════════════════════════
+
+// ─── State ───
+let generatedKeys = null;
+let encImageObj = null;
+
+// ─── Tab Switching ───
+const tabNames = ['Keys', 'Encrypt', 'Decode'];
+tabNames.forEach(name => {
+  document.getElementById('tab' + name).addEventListener('click', () => {
+    tabNames.forEach(t => {
+      document.getElementById('tab' + t).classList.toggle('active', t === name);
+      document.getElementById('sec' + t).style.display = t === name ? 'block' : 'none';
+    });
+  });
+});
+
+// ─── Bit-size selector ───
+document.getElementById('bitSelect').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  document.querySelectorAll('#bitSelect button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+});
+
+function getSelectedBits() {
+  const active = document.querySelector('#bitSelect button.active');
+  return active ? parseInt(active.dataset.bits) : 1024;
+}
+
+// ─── Key Generation ───
+document.getElementById('generateBtn').addEventListener('click', () => {
+  const bits = getSelectedBits();
+  const progress = document.getElementById('keygenProgress');
+  const results = document.getElementById('keygenResults');
+  const status = document.getElementById('keyStatus');
+  const bar = document.getElementById('keygenBar');
+
+  progress.style.display = 'block';
+  results.style.display = 'none';
+  status.className = 'status-badge waiting';
+  status.textContent = 'Generating...';
+  bar.style.width = '15%';
+
+  setTimeout(() => {
+    bar.style.width = '40%';
+    setTimeout(() => {
+      try {
+        const startTime = performance.now();
+        const keys = RSA.generateKeyPair(bits);
+        const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+        generatedKeys = keys;
+        bar.style.width = '100%';
+
+        const pubPEM = RSA.formatPublicKeyPEM(keys.publicKey);
+        const privPEM = RSA.formatPrivateKeyPEM(keys.privateKey);
+
+        // Save securely to session storage
+        KeyVault.saveKeys('rsa', pubPEM, privPEM);
+
+        document.getElementById('pubKeyDisplay').innerHTML =
+          `<button class="copy-btn ghost" onclick="copyKeyText('pubKeyDisplay')">Copy</button>${escapeHtml(pubPEM)}`;
+        document.getElementById('privKeyDisplay').innerHTML =
+          `<button class="copy-btn ghost" onclick="copyKeyText('privKeyDisplay')">Copy</button>${escapeHtml(privPEM)}`;
+
+        results.style.display = 'block';
+        status.className = 'status-badge ready';
+        status.textContent = `${bits}-bit keys ready (${elapsed}s)`;
+        UI.showToast(`RSA ${bits}-bit key pair generated in ${elapsed}s`, 'success');
+        setTimeout(() => { progress.style.display = 'none'; }, 600);
+      } catch (err) {
+        bar.style.width = '0';
+        progress.style.display = 'none';
+        status.className = 'status-badge waiting';
+        status.textContent = 'Generation failed';
+        UI.showToast('Key generation failed: ' + err.message, 'error');
+      }
+    }, 50);
+  }, 50);
+});
+
+// ─── Copy key text ───
+function copyKeyText(elementId) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  const text = el.textContent.replace('Copy', '').trim();
+  navigator.clipboard.writeText(text).then(() => {
+    UI.showToast('Copied to clipboard', 'success', 1500);
+  });
+}
+
+// ─── Download keys ───
+document.getElementById('downloadPubKey').addEventListener('click', () => {
+  if (!generatedKeys) { UI.showToast('Generate keys first', 'error'); return; }
+  downloadFile('rsa_public_key.pem', RSA.formatPublicKeyPEM(generatedKeys.publicKey));
+});
+document.getElementById('downloadPrivKey').addEventListener('click', () => {
+  if (!generatedKeys) { UI.showToast('Generate keys first', 'error'); return; }
+  downloadFile('rsa_private_key.pem', RSA.formatPrivateKeyPEM(generatedKeys.privateKey));
+});
+
+function downloadFile(filename, content) {
+  const blob = new Blob([content], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  UI.showToast(`Downloaded ${filename}`, 'success');
+}
+
+// ─── "Load from Session" buttons ───
+document.getElementById('useGenPubEnc').addEventListener('click', () => {
+  const keys = KeyVault.getKeys('rsa');
+  if (!keys.publicKey) { UI.showToast('No public key in session. Generate in Step 1.', 'error'); return; }
+  document.getElementById('encPubKey').value = keys.publicKey;
+  UI.showToast('Public key loaded from session', 'success');
+});
+document.getElementById('useGenPrivDec').addEventListener('click', () => {
+  const keys = KeyVault.getKeys('rsa');
+  if (!keys.privateKey) { UI.showToast('No private key in session. Generate in Step 1.', 'error'); return; }
+  document.getElementById('decPrivKey').value = keys.privateKey;
+  UI.showToast('Private key loaded from session', 'success');
+});
+
+// ─── Image upload for encryption (Drag & Drop) ───
+UI.setupDragDrop('encDropZone', 'encImage', (file) => {
+  const img = new Image();
+  img.onload = () => {
+    encImageObj = img;
+    const c = document.getElementById('encCanvas');
+    c.width = img.width; c.height = img.height;
+    c.getContext('2d').drawImage(img, 0, 0);
+    const capacity = Stego.calculateCapacityBytes(img.width, img.height);
+    document.getElementById('encMeta').innerHTML = 
+        `Image: ${img.width}×${img.height} — max capacity: ~<strong>${UI.formatBytes(capacity)}</strong>`;
+  };
+  img.src = URL.createObjectURL(file);
+});
+
+// ─── ENCRYPT & EMBED (RSA hybrid + LSB) ───
+document.getElementById('embedBtn').addEventListener('click', () => {
+  if (!encImageObj) { alert('Upload a base image first'); return; }
+  const text = document.getElementById('encText').value.trim();
+  const pubPEM = document.getElementById('encPubKey').value.trim();
+  if (!text) { alert('Enter a secret message to hide'); return; }
+  if (!pubPEM) { alert('Provide an RSA public key (generate one in Step 1 or paste one)'); return; }
+
+  UI.showToast('Encrypting with RSA + embedding...', 'info');
+
+  setTimeout(() => {
+    try {
+      // Parse public key and hybrid-encrypt
+      const pubKey = RSA.parsePublicKeyPEM(pubPEM);
+      const hybrid = RSA.hybridEncrypt(text, pubKey);
+
+      // Serialize the hybrid payload as JSON
+      const payloadStr = JSON.stringify(hybrid);
+
+      document.getElementById('encCipherContainer').style.display = 'block';
+      document.getElementById('encCipherOutput').textContent = payloadStr;
+
+      // Embed into image using robust Stego engine
+      const canvas = document.getElementById('encCanvas');
+      const r = Stego.embedData(canvas, encImageObj, payloadStr);
+      if (!r.ok) {
+        alert('Embedding failed: ' + r.reason);
+        return;
+      }
+
+      // Generate download
+      canvas.toBlob((b) => {
+        const url = URL.createObjectURL(b);
+        const a = document.getElementById('encDownload');
+        a.href = url;
+        a.style.display = 'inline-block';
+        a.textContent = '📥 Download Stego PNG';
+        UI.showToast('Done! Message encrypted and embedded securely.', 'success');
+      }, 'image/png');
+
+      // Apply preview scale
+      try {
+        const scale = document.getElementById('encScale').value;
+        const canv = document.getElementById('encCanvas');
+        canv.style.transform = `scale(${scale / 100})`;
+        canv.style.transformOrigin = 'top left';
+      } catch (e) {}
+
+      document.getElementById('encMeta').innerHTML += '<br><span style="color:var(--success)">✅ Data embedded successfully (' + r.bitsUsed + ' bits)</span>';
+    } catch (err) {
+      alert('Encryption failed: ' + err.message);
+      UI.showToast('Encryption error: ' + err.message, 'error');
+    }
+  }, 50);
+});
+
+// ─── Live preview scale ───
+document.getElementById('encScale').addEventListener('input', (e) => {
+  const v = e.target.value;
+  const canv = document.getElementById('encCanvas');
+  if (canv) {
+    canv.style.transform = `scale(${v / 100})`;
+    canv.style.transformOrigin = 'top left';
+  }
+});
+
+// ─── Clear encrypt ───
+document.getElementById('clearEnc').addEventListener('click', () => {
+  document.getElementById('encText').value = '';
+  document.getElementById('encPubKey').value = '';
+  document.getElementById('encImage').value = '';
+  document.getElementById('encMeta').textContent = '';
+  document.getElementById('encCipherContainer').style.display = 'none';
+  document.getElementById('encCipherOutput').textContent = '';
+  document.getElementById('encDownload').style.display = 'none';
+  encImageObj = null;
+  const c = document.getElementById('encCanvas');
+  c.getContext('2d').clearRect(0, 0, c.width, c.height);
+  UI.showToast('Cleared', 'info', 1500);
+});
+
+// ─── Image upload for decoding (Drag & Drop) ───
+UI.setupDragDrop('decDropZone', 'decImage', (file) => {
+  const img = new Image();
+  img.onload = () => {
+    window._decImg = img;
+    document.getElementById('decodedText').textContent = 'Image loaded — ready to decode';
+    document.getElementById('decodedText').style.color = 'var(--text-secondary)';
+  };
+  img.src = URL.createObjectURL(file);
+});
+
+// ─── EXTRACT CIPHERTEXT ───
+document.getElementById('extractBtn').addEventListener('click', () => {
+  const img = window._decImg;
+  if (!img) { alert('Upload a stego image first'); return; }
+  UI.showToast('Extracting ciphertext from image...', 'info');
+  setTimeout(() => {
+    try {
+      const extractedStr = Stego.extractData(img);
+      document.getElementById('decCiphertext').value = extractedStr;
+      UI.showToast('Ciphertext extracted successfully!', 'success');
+    } catch (err) {
+      alert('Extraction failed: ' + err.message);
+      UI.showToast('Extraction error', 'error');
+    }
+  }, 50);
+});
+
+// ─── DECRYPT CIPHERTEXT ───
+document.getElementById('decryptBtn').addEventListener('click', () => {
+  const cipherStr = document.getElementById('decCiphertext').value.trim();
+  const privPEM = document.getElementById('decPrivKey').value.trim();
+  if (!cipherStr) { alert('Provide the ciphertext (extract from image or paste)'); return; }
+  if (!privPEM) { alert('Provide the RSA private key (from Step 1 or paste one)'); return; }
+
+  UI.showToast('Decrypting message...', 'info');
+
+  setTimeout(() => {
+    try {
+      const payload = JSON.parse(cipherStr);
+      if (!payload.encryptedKey || !payload.encryptedData) {
+        throw new Error('No valid RSA-encrypted data found in this payload');
+      }
+
+      // RSA hybrid decrypt
+      const privKey = RSA.parsePrivateKeyPEM(privPEM);
+      const plaintext = RSA.hybridDecrypt(payload, privKey);
+
+      document.getElementById('decodedText').textContent = plaintext;
+      document.getElementById('decodedText').style.color = 'var(--success)';
+      UI.showToast('Message decrypted successfully!', 'success');
+    } catch (err) {
+      document.getElementById('decodedText').textContent = '❌ Decryption failed — ' + err.message;
+      document.getElementById('decodedText').style.color = 'var(--danger)';
+      UI.showToast('Decryption failed: ' + err.message, 'error');
+    }
+  }, 50);
+});
+
+// ─── Clear decode ───
+document.getElementById('clearDec').addEventListener('click', () => {
+  document.getElementById('decPrivKey').value = '';
+  document.getElementById('decImage').value = '';
+  document.getElementById('decCiphertext').value = '';
+  document.getElementById('decodedText').textContent = 'Decoded text will appear here...';
+  document.getElementById('decodedText').style.color = 'var(--text-muted)';
+  window._decImg = null;
+  UI.showToast('Cleared', 'info', 1500);
+});
+
+// ─── Utility ───
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+</script>
+</body>
+</html>

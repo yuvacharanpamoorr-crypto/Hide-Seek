@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Secure WebCrypto — RSA-OAEP + AES-GCM</title>
+<meta name="description" content="Production-grade encryption using Web Crypto API: RSA-OAEP, AES-256-GCM, SHA-256, digital signatures."/>
+<link rel="stylesheet" href="assets/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+</head>
+<body>
+  <!-- Sticky Glass Header -->
+  <header class="header">
+    <div class="container">
+      <a href="index.html" class="logo-container">
+        <div class="logo">Sv3</div>
+        <div class="logo-text">StegoSuite</div>
+      </a>
+      <nav class="nav">
+        <a href="index.html">Overview</a>
+        <a href="steganography.html">Steganography</a>
+        <a href="watermark.html">Watermarking</a>
+        <a href="rsa.html">RSA (Edu)</a>
+        <a href="webcrypto.html" class="active">WebCrypto</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main-content container">
+    <!-- Mode Banner -->
+    <div class="info-banner secure-info" style="margin-top: 0">
+      <span>🛡️</span>
+      <span>You are using <strong>Secure Production Mode</strong> — Web Crypto API with RSA-OAEP (2048-bit), AES-256-GCM, and SHA-256. For the educational BigInt RSA, visit <a href="rsa.html" style="color:inherit;text-decoration:underline">RSA (Edu)</a>.</span>
+    </div>
+
+    <div style="display:grid; grid-template-columns: 1fr; gap: 24px;">
+      <!-- Grid could be 2fr 1fr if side by side needed, but stack is safer for responsiveness. Let's do a responsive layout -->
+      <style>
+        @media (min-width: 900px) {
+          .crypto-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; align-items: start; }
+        }
+      </style>
+      <div class="crypto-layout">
+        <div class="card">
+
+      <!-- Tabs -->
+      <div class="tab-bar">
+        <button id="tabWcKeygen" class="active">🔑 Key Gen</button>
+        <button id="tabWcEncrypt">🔒 Encrypt</button>
+        <button id="tabWcDecrypt">🔓 Decrypt</button>
+        <button id="tabWcHybrid">⚡ Hybrid</button>
+        <button id="tabWcFileEnc">📁 File Encrypt</button>
+        <button id="tabWcSign">✍️ Sign</button>
+        <button id="tabWcCompare">📊 Compare</button>
+      </div>
+
+      <!-- KEY GENERATION -->
+      <section id="secWcKeygen">
+        <h2 style="margin-bottom:4px">Generate RSA-OAEP Key Pair <span class="mode-badge secure">WebCrypto</span></h2>
+        <p class="small">Generate a 2048-bit RSA-OAEP key pair using the browser's native Web Crypto API. Near-instant generation.</p>
+        <div style="margin-top:14px;display:flex;gap:8px;align-items:center">
+          <button id="wcGenerateBtn" class="success">Generate Key Pair</button>
+          <span id="wcKeyStatus" class="status-badge waiting">No keys generated</span>
+        </div>
+        <div id="wcKeygenResults" style="display:none;margin-top:16px">
+          <div class="divider"></div>
+          <label><span class="key-label pub">🔓 Public Key (SPKI PEM)</span></label>
+          <div class="key-display" id="wcPubKeyDisplay"></div>
+          <label style="margin-top:16px"><span class="key-label priv">🔐 Private Key (PKCS8 PEM)</span></label>
+          <div class="key-display" id="wcPrivKeyDisplay"></div>
+          <div style="margin-top:12px;display:flex;gap:8px">
+            <button id="wcDownPub" class="ghost" style="font-size:0.82rem">📥 Download Public Key</button>
+            <button id="wcDownPriv" class="ghost" style="font-size:0.82rem">📥 Download Private Key</button>
+          </div>
+          <div class="perf-row" id="wcKeygenPerf"></div>
+        </div>
+      </section>
+
+      <!-- ENCRYPT -->
+      <section id="secWcEncrypt" style="display:none">
+        <h2 style="margin-bottom:4px">RSA-OAEP Encrypt <span class="mode-badge secure">WebCrypto</span></h2>
+        <p class="small">Encrypt a short message (max ~190 bytes) using RSA-OAEP with SHA-256.</p>
+        <label>Public Key (PEM)</label>
+        <textarea id="wcEncPubKey" rows="4" class="field" placeholder="Paste public key PEM or click Use Generated Key..."></textarea>
+        <label>Plaintext</label>
+        <textarea id="wcEncPlain" rows="3" class="field" placeholder="Enter message..."></textarea>
+        <div style="margin-top:10px;display:flex;gap:8px">
+          <button id="wcEncBtn">🔒 Encrypt</button>
+          <button id="wcUseGenPubEnc" class="ghost" style="font-size:0.82rem">Use Generated Key</button>
+        </div>
+        <label style="margin-top:14px">Ciphertext (Base64)</label>
+        <div class="key-display" id="wcEncOutput" style="min-height:60px"><span class="small" style="color:var(--text-muted)">Encrypted output appears here...</span></div>
+        <div id="wcEncHash" style="display:none;margin-top:8px"><label>SHA-256 of plaintext</label><div class="hash-display" id="wcEncHashVal"></div></div>
+      </section>
+
+      <!-- DECRYPT -->
+      <section id="secWcDecrypt" style="display:none">
+        <h2 style="margin-bottom:4px">RSA-OAEP Decrypt <span class="mode-badge secure">WebCrypto</span></h2>
+        <p class="small">Decrypt RSA-OAEP ciphertext with the private key.</p>
+        <label>Private Key (PEM)</label>
+        <textarea id="wcDecPrivKey" rows="4" class="field" placeholder="Paste private key PEM..."></textarea>
+        <label>Ciphertext (Base64)</label>
+        <textarea id="wcDecCipher" rows="3" class="field" placeholder="Paste Base64 ciphertext..."></textarea>
+        <div style="margin-top:10px;display:flex;gap:8px">
+          <button id="wcDecBtn">🔓 Decrypt</button>
+          <button id="wcUseGenPrivDec" class="ghost" style="font-size:0.82rem">Use Generated Key</button>
+        </div>
+        <label style="margin-top:14px">Decrypted plaintext</label>
+        <div class="extractedBox card" style="min-height:50px"><div id="wcDecOutput" class="small" style="color:var(--text-muted)">Decrypted text appears here...</div></div>
+      </section>
+
+      <!-- HYBRID -->
+      <section id="secWcHybrid" style="display:none">
+        <h2 style="margin-bottom:4px">Hybrid RSA-OAEP + AES-256-GCM <span class="mode-badge secure">WebCrypto</span></h2>
+        <p class="small">Encrypt messages of any length. AES-256-GCM encrypts the data, RSA-OAEP encrypts the AES key.</p>
+        <div class="tab-bar" style="max-width:300px">
+          <button id="wcHybEncTab" class="active">Encrypt</button>
+          <button id="wcHybDecTab">Decrypt</button>
+        </div>
+        <div id="wcHybEncSec">
+          <label>Public Key (PEM)</label>
+          <textarea id="wcHybPubKey" rows="4" class="field" placeholder="Paste public key PEM..."></textarea>
+          <label>Message</label>
+          <textarea id="wcHybPlain" rows="4" class="field" placeholder="Enter any length message..."></textarea>
+          <div style="margin-top:10px;display:flex;gap:8px">
+            <button id="wcHybEncBtn" class="success">⚡ Hybrid Encrypt</button>
+            <button id="wcUseGenPubHyb" class="ghost" style="font-size:0.82rem">Use Generated Key</button>
+          </div>
+          <label style="margin-top:14px">Encrypted Package (JSON)</label>
+          <div class="key-display" id="wcHybEncOutput" style="min-height:60px"><span class="small" style="color:var(--text-muted)">Encrypted package appears here...</span></div>
+        </div>
+        <div id="wcHybDecSec" style="display:none">
+          <label>Private Key (PEM)</label>
+          <textarea id="wcHybPrivKey" rows="4" class="field" placeholder="Paste private key PEM..."></textarea>
+          <label>Encrypted Package (JSON)</label>
+          <textarea id="wcHybCipher" rows="4" class="field" placeholder='Paste JSON package...'></textarea>
+          <div style="margin-top:10px;display:flex;gap:8px">
+            <button id="wcHybDecBtn">🔓 Hybrid Decrypt</button>
+            <button id="wcUseGenPrivHyb" class="ghost" style="font-size:0.82rem">Use Generated Key</button>
+          </div>
+          <label style="margin-top:14px">Decrypted message</label>
+          <div class="extractedBox card" style="min-height:50px"><div id="wcHybDecOutput" class="small" style="color:var(--text-muted)">Decrypted text appears here...</div></div>
+        </div>
+      </section>
+
+      <!-- FILE ENCRYPTION -->
+      <section id="secWcFileEnc" style="display:none">
+        <h2 style="margin-bottom:4px">Secure File Encryption <span class="mode-badge secure">WebCrypto</span></h2>
+        <p class="small">Encrypt or decrypt whole files using AES-256-GCM, wrapping the key with RSA-OAEP.</p>
+        <div class="tab-bar" style="max-width:300px">
+          <button id="wcFileEncTab" class="active">Encrypt File</button>
+          <button id="wcFileDecTab">Decrypt File</button>
+        </div>
+        
+        <!-- Encrypt File -->
+        <div id="wcFileEncSec">
+          <label>Public Key (PEM)</label>
+          <textarea id="wcFileEncPubKey" rows="3" class="field" placeholder="Paste public key PEM..."></textarea>
+          <div style="margin-top:6px; margin-bottom:12px;">
+            <button id="wcUseGenPubFileEnc" class="ghost" style="font-size:0.82rem;padding:6px 12px">Load from Session</button>
+          </div>
+          
+          <label>File to Encrypt</label>
+          <div id="fileEncDropZone" class="drop-zone">
+            <span class="drop-icon">📁</span>
+            <div class="drop-text">Drag & drop a file here to encrypt</div>
+            <div class="drop-sub">or click to browse</div>
+            <input id="wcFileToEnc" type="file" />
+          </div>
+          <div id="fileEncInfo" class="small" style="margin-top:8px; color:var(--text-secondary)"></div>
+          
+          <div style="margin-top:14px;">
+            <button id="wcFileEncBtn" class="success" disabled>🔒 Encrypt File</button>
+          </div>
+        </div>
+
+        <!-- Decrypt File -->
+        <div id="wcFileDecSec" style="display:none">
+          <label>Private Key (PEM)</label>
+          <textarea id="wcFileDecPrivKey" rows="3" class="field" placeholder="Paste private key PEM..."></textarea>
+          <div style="margin-top:6px; margin-bottom:12px;">
+            <button id="wcUseGenPrivFileDec" class="ghost" style="font-size:0.82rem;padding:6px 12px">Load from Session</button>
+          </div>
+          
+          <label>Encrypted File (.enc)</label>
+          <div id="fileDecDropZone" class="drop-zone">
+            <span class="drop-icon">🔐</span>
+            <div class="drop-text">Drag & drop an encrypted file here</div>
+            <div class="drop-sub">or click to browse</div>
+            <input id="wcFileToDec" type="file" />
+          </div>
+          <div id="fileDecInfo" class="small" style="margin-top:8px; color:var(--text-secondary)"></div>
+          
+          <div style="margin-top:14px;">
+            <button id="wcFileDecBtn" disabled>🔓 Decrypt File</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- SIGN / VERIFY -->
+      <section id="secWcSign" style="display:none">
+        <h2 style="margin-bottom:4px">Digital Signatures <span class="mode-badge secure">RSA-PSS</span></h2>
+        <p class="small">Sign messages with RSA-PSS (SHA-256) and verify signatures.</p>
+        <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+          <button id="wcGenSignKeys" class="success">Generate Signing Keys</button>
+          <span id="wcSignKeyStatus" class="status-badge waiting">No signing keys</span>
+        </div>
+        <div id="wcSignSection" style="display:none;margin-top:16px">
+          <div class="divider"></div>
+          <label>Message to sign</label>
+          <textarea id="wcSignMsg" rows="3" class="field" placeholder="Enter message to sign..."></textarea>
+          <div style="margin-top:10px;display:flex;gap:8px">
+            <button id="wcSignBtn">✍️ Sign</button>
+            <button id="wcVerifyBtn" class="ghost">✅ Verify</button>
+          </div>
+          <label style="margin-top:14px">Signature (Base64)</label>
+          <div class="key-display" id="wcSigOutput" style="min-height:40px"><span class="small" style="color:var(--text-muted)">Signature appears here...</span></div>
+          <div id="wcVerifyResult" style="display:none;margin-top:8px"></div>
+        </div>
+      </section>
+
+      <!-- SPEED COMPARISON -->
+      <section id="secWcCompare" style="display:none">
+        <h2 style="margin-bottom:4px">Speed Comparison <span class="mode-badge edu">Edu</span> vs <span class="mode-badge secure">WebCrypto</span></h2>
+        <p class="small">Compare key generation and encryption speed between the educational BigInt RSA and the native Web Crypto API.</p>
+        <div style="margin-top:14px">
+          <button id="wcRunBenchmark" class="success">▶ Run Benchmark</button>
+        </div>
+        <div id="wcBenchResults" style="display:none;margin-top:16px">
+          <table class="compare-table" id="wcBenchTable">
+            <thead><tr><th>Operation</th><th>Educational RSA</th><th>WebCrypto</th><th>Winner</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+        </div>
+
+        <aside class="card">
+          <h4 style="margin-bottom:8px;color:var(--text-main)">WebCrypto API</h4>
+          <p class="small">The <strong>Web Crypto API</strong> provides native, hardware-accelerated cryptographic operations:</p>
+          <ul class="small" style="margin-left:16px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
+            <li><strong>RSA-OAEP</strong> — Optimal Asymmetric Encryption Padding, resistant to padding oracle attacks.</li>
+            <li><strong>AES-256-GCM</strong> — Authenticated encryption providing confidentiality + integrity.</li>
+            <li><strong>SHA-256</strong> — Secure hashing for integrity verification.</li>
+          </ul>
+          <h4 style="margin-bottom:8px;color:var(--text-main)">vs Educational RSA</h4>
+          <ul class="small" style="margin-left:16px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
+            <li><strong>Educational</strong> — Custom BigInt, great for learning. Not production-safe.</li>
+            <li><strong>WebCrypto</strong> — Browser-native, hardware-accelerated, production-ready.</li>
+          </ul>
+          <h4 style="margin-bottom:8px;color:var(--text-main)">Steganography</h4>
+          <p class="small">WebCrypto hybrid payloads can be embedded into images via the <a href="steganography.html" style="color:var(--info-text)">Steganography</a> page.</p>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container">Secure WebCrypto — all processing runs in your browser using native crypto APIs. No data leaves this page.</div>
+  </footer>
+
+<script src="assets/ui.js"></script>
+<script src="assets/storage.js"></script>
+<script src="assets/rsa.js"></script>
+<script src="assets/webcrypto.js"></script>
+<script>
+// State
+let wcKeys = null;
+let wcSignKeys = null;
+let wcPubPEM = '', wcPrivPEM = '';
+let currentFileToEnc = null;
+let currentFileToDec = null;
+
+// Tab switching
+const wcTabs = ['WcKeygen','WcEncrypt','WcDecrypt','WcHybrid','WcFileEnc','WcSign','WcCompare'];
+wcTabs.forEach(name => {
+  document.getElementById('tab'+name).addEventListener('click', () => {
+    wcTabs.forEach(t => {
+      document.getElementById('tab'+t).classList.toggle('active', t===name);
+      document.getElementById('sec'+t).style.display = t===name ? 'block' : 'none';
+    });
+  });
+});
+
+// Hybrid sub-tabs
+document.getElementById('wcHybEncTab').addEventListener('click', () => {
+  document.getElementById('wcHybEncSec').style.display='block';
+  document.getElementById('wcHybDecSec').style.display='none';
+  document.getElementById('wcHybEncTab').classList.add('active');
+  document.getElementById('wcHybDecTab').classList.remove('active');
+});
+document.getElementById('wcHybDecTab').addEventListener('click', () => {
+  document.getElementById('wcHybEncSec').style.display='none';
+  document.getElementById('wcHybDecSec').style.display='block';
+  document.getElementById('wcHybDecTab').classList.add('active');
+  document.getElementById('wcHybEncTab').classList.remove('active');
+});
+
+// KEY GENERATION
+document.getElementById('wcGenerateBtn').addEventListener('click', async () => {
+  const status = document.getElementById('wcKeyStatus');
+  status.className='status-badge waiting'; status.textContent='Generating...';
+  try {
+    const {result: keyPair, elapsed} = await WebCrypto.timed(() => WebCrypto.generateRSAKeyPair(2048));
+    wcKeys = keyPair;
+    wcPubPEM = await WebCrypto.exportPublicKeyPEM(keyPair.publicKey);
+    wcPrivPEM = await WebCrypto.exportPrivateKeyPEM(keyPair.privateKey);
+    document.getElementById('wcPubKeyDisplay').textContent = wcPubPEM;
+    document.getElementById('wcPrivKeyDisplay').textContent = wcPrivPEM;
+    document.getElementById('wcKeygenResults').style.display='block';
+    status.className='status-badge ready';
+    status.textContent=`2048-bit keys (${(elapsed).toFixed(0)}ms)`;
+    KeyVault.saveKeys('webcrypto', wcPubPEM, wcPrivPEM);
+    
+    document.getElementById('wcKeygenPerf').innerHTML=`
+      <div class="perf-card"><div class="perf-value">${elapsed.toFixed(0)}ms</div><div class="perf-label">Key Gen Time</div></div>
+      <div class="perf-card"><div class="perf-value">2048</div><div class="perf-label">Key Size (bits)</div></div>
+      <div class="perf-card"><div class="perf-value">RSA-OAEP</div><div class="perf-label">Algorithm</div></div>
+      <div class="perf-card"><div class="perf-value">SHA-256</div><div class="perf-label">Hash</div></div>`;
+    UI.showToast(`WebCrypto RSA-OAEP keys generated in ${elapsed.toFixed(0)}ms`, 'success');
+  } catch(err) {
+    status.className='status-badge waiting'; status.textContent='Generation failed';
+    UI.showToast('Key generation failed: '+err.message, 'error');
+  }
+});
+
+// Download keys
+document.getElementById('wcDownPub').addEventListener('click', () => {
+  if(!wcPubPEM){UI.showToast('Generate keys first','error');return;}
+  dlFile('webcrypto_public_key.pem', wcPubPEM);
+});
+document.getElementById('wcDownPriv').addEventListener('click', () => {
+  if(!wcPrivPEM){UI.showToast('Generate keys first','error');return;}
+  dlFile('webcrypto_private_key.pem', wcPrivPEM);
+});
+function dlFile(n,c){const b=new Blob([c],{type:'text/plain'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=n;document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(u);UI.showToast('Downloaded '+n,'success');}
+
+// Use Generated Key helpers
+function useGenPub(id){
+  const k=KeyVault.getKeys('webcrypto');
+  if(!k.publicKey){UI.showToast('Generate keys first','error');return;}
+  document.getElementById(id).value=k.publicKey;
+  UI.showToast('Public key loaded','info');
+}
+function useGenPriv(id){
+  const k=KeyVault.getKeys('webcrypto');
+  if(!k.privateKey){UI.showToast('Generate keys first','error');return;}
+  document.getElementById(id).value=k.privateKey;
+  UI.showToast('Private key loaded','info');
+}
+document.getElementById('wcUseGenPubEnc').addEventListener('click',()=>useGenPub('wcEncPubKey'));
+document.getElementById('wcUseGenPrivDec').addEventListener('click',()=>useGenPriv('wcDecPrivKey'));
+document.getElementById('wcUseGenPubHyb').addEventListener('click',()=>useGenPub('wcHybPubKey'));
+document.getElementById('wcUseGenPrivHyb').addEventListener('click',()=>useGenPriv('wcHybPrivKey'));
+document.getElementById('wcUseGenPubFileEnc').addEventListener('click',()=>useGenPub('wcFileEncPubKey'));
+document.getElementById('wcUseGenPrivFileDec').addEventListener('click',()=>useGenPriv('wcFileDecPrivKey'));
+
+// ENCRYPT
+document.getElementById('wcEncBtn').addEventListener('click', async () => {
+  const pem=document.getElementById('wcEncPubKey').value.trim();
+  const plain=document.getElementById('wcEncPlain').value.trim();
+  if(!pem||!plain){UI.showToast('Provide key and message','error');return;}
+  try {
+    const key=await WebCrypto.importPublicKeyPEM(pem);
+    const cipher=await WebCrypto.rsaEncrypt(plain, key);
+    document.getElementById('wcEncOutput').textContent=cipher;
+    const hash=await WebCrypto.sha256(plain);
+    document.getElementById('wcEncHash').style.display='block';
+    document.getElementById('wcEncHashVal').textContent=hash;
+    UI.showToast('Encrypted with RSA-OAEP','success');
+  } catch(err){UI.showToast('Encryption failed: '+err.message,'error');}
+});
+
+// DECRYPT
+document.getElementById('wcDecBtn').addEventListener('click', async () => {
+  const pem=document.getElementById('wcDecPrivKey').value.trim();
+  const cipher=document.getElementById('wcDecCipher').value.trim();
+  if(!pem||!cipher){UI.showToast('Provide key and ciphertext','error');return;}
+  try {
+    const key=await WebCrypto.importPrivateKeyPEM(pem);
+    const plain=await WebCrypto.rsaDecrypt(cipher, key);
+    document.getElementById('wcDecOutput').textContent=plain;
+    document.getElementById('wcDecOutput').style.color='var(--success)';
+    UI.showToast('Decrypted successfully','success');
+  } catch(err){
+    document.getElementById('wcDecOutput').textContent='Decryption failed — '+err.message;
+    document.getElementById('wcDecOutput').style.color='var(--danger)';
+    UI.showToast('Decryption failed','error');
+  }
+});
+
+// HYBRID ENCRYPT
+document.getElementById('wcHybEncBtn').addEventListener('click', async () => {
+  const pem=document.getElementById('wcHybPubKey').value.trim();
+  const plain=document.getElementById('wcHybPlain').value.trim();
+  if(!pem||!plain){UI.showToast('Provide key and message','error');return;}
+  try {
+    const key=await WebCrypto.importPublicKeyPEM(pem);
+    const {result:pkg, elapsed}=await WebCrypto.timed(()=>WebCrypto.hybridEncrypt(plain, key));
+    const json=JSON.stringify(pkg, null, 2);
+    document.getElementById('wcHybEncOutput').textContent=json;
+    UI.showToast(`Hybrid encrypted in ${elapsed.toFixed(0)}ms`,'success');
+  } catch(err){UI.showToast('Hybrid encryption failed: '+err.message,'error');}
+});
+
+// HYBRID DECRYPT
+document.getElementById('wcHybDecBtn').addEventListener('click', async () => {
+  const pem=document.getElementById('wcHybPrivKey').value.trim();
+  const cipherJson=document.getElementById('wcHybCipher').value.trim();
+  if(!pem||!cipherJson){UI.showToast('Provide key and package','error');return;}
+  try {
+    const key=await WebCrypto.importPrivateKeyPEM(pem);
+    const payload=JSON.parse(cipherJson);
+    const plain=await WebCrypto.hybridDecrypt(payload, key);
+    document.getElementById('wcHybDecOutput').textContent=plain;
+    document.getElementById('wcHybDecOutput').style.color='var(--success)';
+    UI.showToast('Hybrid decrypted successfully','success');
+  } catch(err){
+    document.getElementById('wcHybDecOutput').textContent='Decryption failed — '+err.message;
+    document.getElementById('wcHybDecOutput').style.color='var(--danger)';
+    UI.showToast('Hybrid decryption failed','error');
+  }
+});
+
+// DIGITAL SIGNATURES
+document.getElementById('wcGenSignKeys').addEventListener('click', async () => {
+  const st=document.getElementById('wcSignKeyStatus');
+  st.className='status-badge waiting';st.textContent='Generating...';
+  try {
+    const {result:kp, elapsed}=await WebCrypto.timed(()=>WebCrypto.generateSigningKeyPair(2048));
+    wcSignKeys=kp;
+    st.className='status-badge ready';st.textContent=`Signing keys ready (${elapsed.toFixed(0)}ms)`;
+    document.getElementById('wcSignSection').style.display='block';
+    UI.showToast('RSA-PSS signing keys generated','success');
+  } catch(err){st.textContent='Failed';UI.showToast(err.message,'error');}
+});
+
+document.getElementById('wcSignBtn').addEventListener('click', async () => {
+  if(!wcSignKeys){UI.showToast('Generate signing keys first','error');return;}
+  const msg=document.getElementById('wcSignMsg').value.trim();
+  if(!msg){UI.showToast('Enter a message','error');return;}
+  try {
+    const sig=await WebCrypto.sign(msg, wcSignKeys.privateKey);
+    document.getElementById('wcSigOutput').textContent=sig;
+    UI.showToast('Message signed with RSA-PSS','success');
+  } catch(err){UI.showToast('Signing failed: '+err.message,'error');}
+});
+
+document.getElementById('wcVerifyBtn').addEventListener('click', async () => {
+  if(!wcSignKeys){UI.showToast('Generate signing keys first','error');return;}
+  const msg=document.getElementById('wcSignMsg').value.trim();
+  const sig=document.getElementById('wcSigOutput').textContent.trim();
+  if(!msg||!sig||sig.includes('appears here')){UI.showToast('Sign a message first','error');return;}
+  try {
+    const valid=await WebCrypto.verify(msg, sig, wcSignKeys.publicKey);
+    const el=document.getElementById('wcVerifyResult');
+    el.style.display='block';
+    el.innerHTML=valid
+      ? '<div class="info-banner secure-info"><span>✅</span><span>Signature is <strong>VALID</strong> — message integrity confirmed.</span></div>'
+      : '<div class="info-banner warn"><span>❌</span><span>Signature is <strong>INVALID</strong> — message may have been tampered with.</span></div>';
+    UI.showToast(valid?'Signature valid':'Signature invalid', valid?'success':'error');
+  } catch(err){UI.showToast('Verification failed: '+err.message,'error');}
+});
+
+// FILE ENCRYPTION LOGIC
+document.getElementById('wcFileEncTab').addEventListener('click', () => {
+  document.getElementById('wcFileEncSec').style.display='block';
+  document.getElementById('wcFileDecSec').style.display='none';
+  document.getElementById('wcFileEncTab').classList.add('active');
+  document.getElementById('wcFileDecTab').classList.remove('active');
+});
+document.getElementById('wcFileDecTab').addEventListener('click', () => {
+  document.getElementById('wcFileEncSec').style.display='none';
+  document.getElementById('wcFileDecSec').style.display='block';
+  document.getElementById('wcFileDecTab').classList.add('active');
+  document.getElementById('wcFileEncTab').classList.remove('active');
+});
+
+UI.setupDragDrop('fileEncDropZone', 'wcFileToEnc', (file) => {
+  currentFileToEnc = file;
+  document.getElementById('fileEncInfo').textContent = `Loaded: ${file.name} (${UI.formatBytes(file.size)})`;
+  document.getElementById('wcFileEncBtn').disabled = false;
+});
+
+UI.setupDragDrop('fileDecDropZone', 'wcFileToDec', (file) => {
+  currentFileToDec = file;
+  document.getElementById('fileDecInfo').textContent = `Loaded: ${file.name} (${UI.formatBytes(file.size)})`;
+  document.getElementById('wcFileDecBtn').disabled = false;
+});
+
+document.getElementById('wcFileEncBtn').addEventListener('click', async () => {
+  if(!currentFileToEnc) return;
+  const pem = document.getElementById('wcFileEncPubKey').value.trim();
+  if(!pem){UI.showToast('Provide an RSA public key first','error');return;}
+  UI.showToast('Encrypting file...', 'info');
+  try {
+    const key = await WebCrypto.importPublicKeyPEM(pem);
+    const buffer = await currentFileToEnc.arrayBuffer();
+    const {result: pkgBuffer, elapsed} = await WebCrypto.timed(() => WebCrypto.encryptFile(buffer, key));
+    
+    const blob = new Blob([pkgBuffer], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = currentFileToEnc.name + '.sec';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    UI.showToast(`File encrypted securely in ${elapsed.toFixed(0)}ms`, 'success');
+  } catch(err) { UI.showToast('File encryption failed: ' + err.message, 'error'); }
+});
+
+document.getElementById('wcFileDecBtn').addEventListener('click', async () => {
+  if(!currentFileToDec) return;
+  const pem = document.getElementById('wcFileDecPrivKey').value.trim();
+  if(!pem){UI.showToast('Provide an RSA private key first','error');return;}
+  UI.showToast('Decrypting file...', 'info');
+  try {
+    const key = await WebCrypto.importPrivateKeyPEM(pem);
+    const buffer = await currentFileToDec.arrayBuffer();
+    const {result: decryptedBuffer, elapsed} = await WebCrypto.timed(() => WebCrypto.decryptFile(buffer, key));
+    
+    const originalName = currentFileToDec.name.replace('.sec', '');
+    const blob = new Blob([decryptedBuffer], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = originalName;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    UI.showToast(`File decrypted securely in ${elapsed.toFixed(0)}ms`, 'success');
+  } catch(err) { UI.showToast('File decryption failed: ' + err.message, 'error'); }
+});
+
+// SPEED COMPARISON BENCHMARK
+document.getElementById('wcRunBenchmark').addEventListener('click', async () => {
+  const btn=document.getElementById('wcRunBenchmark');
+  btn.innerHTML='<span class="crypto-spinner"></span> Running...';btn.disabled=true;
+  const tbody=document.querySelector('#wcBenchTable tbody');
+  tbody.innerHTML='';
+  document.getElementById('wcBenchResults').style.display='block';
+  const testMsg='Hello, this is a benchmark test message for speed comparison!';
+  try {
+    // Key generation comparison
+    const eduKeyStart=performance.now();
+    const eduKeys=RSA.generateKeyPair(1024);
+    const eduKeyTime=performance.now()-eduKeyStart;
+
+    const {elapsed:wcKeyTime}=await WebCrypto.timed(()=>WebCrypto.generateRSAKeyPair(2048));
+
+    addRow('Key Generation (1024 vs 2048-bit)', eduKeyTime, wcKeyTime);
+
+    // Encryption comparison
+    const pubKey=RSA.parsePublicKeyPEM(RSA.formatPublicKeyPEM(eduKeys.publicKey));
+    const eduEncStart=performance.now();
+    RSA.encrypt(testMsg.substring(0,50), pubKey);
+    const eduEncTime=performance.now()-eduEncStart;
+
+    const wcPub=await WebCrypto.importPublicKeyPEM(wcPubPEM||await(async()=>{const k=await WebCrypto.generateRSAKeyPair(2048);wcPubPEM=await WebCrypto.exportPublicKeyPEM(k.publicKey);wcPrivPEM=await WebCrypto.exportPrivateKeyPEM(k.privateKey);wcKeys=k;return wcPubPEM;})());
+    const {elapsed:wcEncTime}=await WebCrypto.timed(()=>WebCrypto.rsaEncrypt(testMsg.substring(0,50), wcPub));
+
+    addRow('RSA Encrypt (short msg)', eduEncTime, wcEncTime);
+
+    // Hybrid comparison
+    const eduHybStart=performance.now();
+    RSA.hybridEncrypt(testMsg, pubKey);
+    const eduHybTime=performance.now()-eduHybStart;
+
+    const {elapsed:wcHybTime}=await WebCrypto.timed(()=>WebCrypto.hybridEncrypt(testMsg, wcPub));
+    addRow('Hybrid Encrypt', eduHybTime, wcHybTime);
+
+    // SHA-256
+    const shaStart=performance.now();
+    CryptoJS.SHA256(testMsg).toString();
+    const cjsTime=performance.now()-shaStart;
+    const {elapsed:wcShaTime}=await WebCrypto.timed(()=>WebCrypto.sha256(testMsg));
+    addRow('SHA-256 Hash', cjsTime, wcShaTime);
+
+    UI.showToast('Benchmark complete','success');
+  } catch(err){UI.showToast('Benchmark error: '+err.message,'error');}
+  btn.innerHTML='▶ Run Benchmark';btn.disabled=false;
+
+  function addRow(op, eduMs, wcMs){
+    const winner=wcMs<eduMs?'WebCrypto':'Educational';
+    const speedup=Math.max(eduMs,wcMs)/Math.max(Math.min(eduMs,wcMs),0.01);
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${op}</td><td>${eduMs.toFixed(1)}ms</td><td>${wcMs.toFixed(1)}ms</td><td class="winner">${winner} (${speedup.toFixed(1)}x)</td>`;
+    tbody.appendChild(tr);
+  }
+});
+
+// Utility
+function escapeHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+</script>
+</body>
+</html>

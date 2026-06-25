@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>RSA Encryption — Key Generation, Encrypt & Decrypt</title>
+<meta name="description" content="Generate RSA key pairs, encrypt messages with public keys, and decrypt with private keys. Supports hybrid RSA+AES for large messages."/>
+<link rel="stylesheet" href="assets/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+</head>
+<body>
+  <!-- Sticky Glass Header -->
+  <header class="header">
+    <div class="container">
+      <a href="index.html" class="logo-container">
+        <div class="logo">Sv3</div>
+        <div class="logo-text">StegoSuite</div>
+      </a>
+      <nav class="nav">
+        <a href="index.html">Overview</a>
+        <a href="steganography.html">Steganography</a>
+        <a href="watermark.html">Watermarking</a>
+        <a href="rsa.html" class="active">RSA (Edu)</a>
+        <a href="webcrypto.html">WebCrypto</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main-content container">
+    <!-- Mode Banner -->
+    <div class="info-banner default" style="margin-top: 0">
+      <span>🏫</span>
+      <span>You are using <strong>Educational Mode</strong> — Custom BigInt RSA. This mode is for learning and exploring mathematics. For real-world usage, visit <a href="webcrypto.html" style="color:inherit;text-decoration:underline">WebCrypto</a>.</span>
+    </div>
+
+    <style>
+      @media (min-width: 900px) {
+        .crypto-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; align-items: start; }
+      }
+    </style>
+    <div class="crypto-layout">
+      <div class="card">
+
+      <!-- ─── Tabs ─── -->
+      <div class="tab-bar">
+        <button id="tabKeygen" class="active">🔑 Key Generation</button>
+        <button id="tabEncrypt" >🔒 Encrypt</button>
+        <button id="tabDecrypt" >🔓 Decrypt</button>
+        <button id="tabHybrid"  >⚡ Hybrid RSA+AES</button>
+      </div>
+
+      <!-- ═══════ Key Generation ═══════ -->
+      <section id="secKeygen">
+        <h2 style="margin-bottom:4px">Generate RSA Key Pair</h2>
+        <p class="small">Choose a key size and generate a new public/private key pair. Larger keys are more secure but slower to generate.</p>
+
+        <label>Key size (bits)</label>
+        <div class="bit-select" id="bitSelect">
+          <button data-bits="512">512</button>
+          <button data-bits="1024" class="active">1024</button>
+          <button data-bits="2048">2048</button>
+        </div>
+
+        <div style="margin-top:14px;display:flex;gap:8px;align-items:center">
+          <button id="generateBtn" class="success">Generate Key Pair</button>
+          <span id="keyStatus" class="status-badge waiting">No keys generated</span>
+        </div>
+
+        <div id="keygenProgress" style="display:none;margin-top:12px">
+          <div class="small" style="color:var(--warning)">
+            ⏳ Generating primes… This may take a few seconds for larger keys.
+          </div>
+          <div style="margin-top:8px;height:3px;background:rgba(0,0,0,0.3);border-radius:2px;overflow:hidden">
+            <div id="keygenBar" style="width:0;height:100%;background:linear-gradient(90deg,var(--accent),#8b5cf6);transition:width 0.3s;border-radius:2px"></div>
+          </div>
+        </div>
+
+        <div id="keygenResults" style="display:none;margin-top:16px">
+          <div class="divider"></div>
+          <label><span class="key-label pub">🔓 Public Key</span></label>
+          <div class="key-display" id="pubKeyDisplay">
+            <button class="copy-btn ghost" data-copy="pubKeyDisplay">Copy</button>
+          </div>
+
+          <label style="margin-top:16px"><span class="key-label priv">🔐 Private Key</span></label>
+          <div class="key-display" id="privKeyDisplay">
+            <button class="copy-btn ghost" data-copy="privKeyDisplay">Copy</button>
+          </div>
+
+          <div style="margin-top:12px;display:flex;gap:8px">
+            <button id="downloadPubKey" class="ghost" style="font-size:0.82rem">📥 Download Public Key</button>
+            <button id="downloadPrivKey" class="ghost" style="font-size:0.82rem">📥 Download Private Key</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════ Encrypt ═══════ -->
+      <section id="secEncrypt" style="display:none">
+        <h2 style="margin-bottom:4px">RSA Encrypt</h2>
+        <p class="small">Encrypt a short message using a public key. For longer messages, use the Hybrid RSA+AES tab.</p>
+
+        <label>Public Key (PEM)</label>
+        <textarea id="encPubKeyInput" rows="5" class="field" placeholder="Paste public key PEM here or generate one in Key Generation tab..."></textarea>
+
+        <label>Plaintext message</label>
+        <textarea id="encPlaintext" rows="3" class="field" placeholder="Enter your secret message..."></textarea>
+
+        <div style="margin-top:10px;display:flex;gap:8px">
+          <button id="rsaEncryptBtn">🔒 Encrypt</button>
+          <button id="useGenPubKey" class="ghost" style="font-size:0.82rem">Use Generated Key</button>
+        </div>
+
+        <label style="margin-top:14px">Ciphertext</label>
+        <div class="key-display" id="encCipherOutput" style="min-height:60px">
+          <button class="copy-btn ghost" data-copy="encCipherOutput">Copy</button>
+          <span class="small" style="color:var(--text-muted)">Encrypted output will appear here...</span>
+        </div>
+      </section>
+
+      <!-- ═══════ Decrypt ═══════ -->
+      <section id="secDecrypt" style="display:none">
+        <h2 style="margin-bottom:4px">RSA Decrypt</h2>
+        <p class="small">Decrypt a ciphertext using the corresponding private key.</p>
+
+        <label>Private Key (PEM)</label>
+        <textarea id="decPrivKeyInput" rows="5" class="field" placeholder="Paste private key PEM here or generate one in Key Generation tab..."></textarea>
+
+        <label>Ciphertext</label>
+        <textarea id="decCipherInput" rows="3" class="field" placeholder="Paste the encrypted ciphertext here..."></textarea>
+
+        <div style="margin-top:10px;display:flex;gap:8px">
+          <button id="rsaDecryptBtn">🔓 Decrypt</button>
+          <button id="useGenPrivKey" class="ghost" style="font-size:0.82rem">Use Generated Key</button>
+        </div>
+
+        <label style="margin-top:14px">Decrypted plaintext</label>
+        <div class="extractedBox card" style="min-height:50px">
+          <div id="decPlainOutput" class="small" style="color:var(--text-muted)">Decrypted text will appear here...</div>
+        </div>
+      </section>
+
+      <!-- ═══════ Hybrid RSA+AES ═══════ -->
+      <section id="secHybrid" style="display:none">
+        <h2 style="margin-bottom:4px">Hybrid RSA + AES Encryption</h2>
+        <p class="small">Encrypt large messages by combining RSA (for key exchange) and AES (for data). The AES key is generated randomly and encrypted with RSA.</p>
+
+        <div class="tab-bar" style="max-width:300px">
+          <button id="hybEncTab" class="active">Encrypt</button>
+          <button id="hybDecTab">Decrypt</button>
+        </div>
+
+        <!-- Hybrid Encrypt -->
+        <div id="hybEncSection">
+          <label>Public Key (PEM)</label>
+          <textarea id="hybPubKeyInput" rows="4" class="field" placeholder="Paste public key PEM here..."></textarea>
+
+          <label>Message</label>
+          <textarea id="hybPlaintext" rows="4" class="field" placeholder="Enter any length message — it will be AES-encrypted, and the AES key will be RSA-encrypted..."></textarea>
+
+          <div style="margin-top:10px;display:flex;gap:8px">
+            <button id="hybEncryptBtn" class="success">⚡ Hybrid Encrypt</button>
+            <button id="useGenPubKeyHyb" class="ghost" style="font-size:0.82rem">Use Generated Key</button>
+          </div>
+
+          <label style="margin-top:14px">Encrypted package (JSON)</label>
+          <div class="key-display" id="hybCipherOutput" style="min-height:60px">
+            <button class="copy-btn ghost" data-copy="hybCipherOutput">Copy</button>
+            <span class="small" style="color:var(--text-muted)">Encrypted package will appear here...</span>
+          </div>
+        </div>
+
+        <!-- Hybrid Decrypt -->
+        <div id="hybDecSection" style="display:none">
+          <label>Private Key (PEM)</label>
+          <textarea id="hybPrivKeyInput" rows="4" class="field" placeholder="Paste private key PEM here..."></textarea>
+
+          <label>Encrypted package (JSON)</label>
+          <textarea id="hybCipherInput" rows="4" class="field" placeholder='Paste the JSON package here: {"encryptedKey":"...","encryptedData":"..."}'></textarea>
+
+          <div style="margin-top:10px;display:flex;gap:8px">
+            <button id="hybDecryptBtn">🔓 Hybrid Decrypt</button>
+            <button id="useGenPrivKeyHyb" class="ghost" style="font-size:0.82rem">Use Generated Key</button>
+          </div>
+
+          <label style="margin-top:14px">Decrypted message</label>
+          <div class="extractedBox card" style="min-height:50px">
+            <div id="hybPlainOutput" class="small" style="color:var(--text-muted)">Decrypted text will appear here...</div>
+          </div>
+        </div>
+      </section>
+
+      </div>
+
+      <aside class="card">
+        <h4 style="margin-bottom:8px;color:var(--text-main)">How RSA Works</h4>
+        <p class="small">RSA (Rivest–Shamir–Adleman) is an asymmetric cryptographic algorithm that uses a pair of keys:</p>
+        <ul class="small" style="margin-left:16px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
+          <li><strong>Public key</strong> — shared openly, used to encrypt messages.</li>
+          <li><strong>Private key</strong> — kept secret, used to decrypt.</li>
+          <li>Security relies on the difficulty of factoring large prime numbers.</li>
+        </ul>
+        <h4 style="margin-bottom:8px;color:var(--text-main)">Hybrid Mode</h4>
+        <p class="small" style="margin-bottom:20px">Raw RSA can only encrypt data smaller than the key. <strong>Hybrid mode</strong> generates a random AES key, encrypts the message with AES, then encrypts the AES key with RSA — enabling encryption of arbitrarily large data.</p>
+        <h4 style="margin-bottom:8px;color:var(--text-main)">Key Sizes</h4>
+        <ul class="small" style="margin-left:16px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
+          <li><strong>512-bit</strong> — Demo only, fast generation (~1s)</li>
+          <li><strong>1024-bit</strong> — Educational, decent security (~2-5s)</li>
+          <li><strong>2048-bit</strong> — Standard security (~10-30s)</li>
+        </ul>
+      </aside>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container">Educational RSA implementation. Do not use for real security.</div>
+  </footer>
+
+<script src="assets/ui.js"></script>
+<script src="assets/storage.js"></script>
+<script src="assets/rsa.js"></script>
+<script>
+// ═══════════════════════════════════════════════
+// RSA Page Logic
+// ═══════════════════════════════════════════════
+
+// State
+let generatedKeys = null;
+
+// ─── Tab Switching (main) ───
+const tabs = ['Keygen','Encrypt','Decrypt','Hybrid'];
+tabs.forEach(name => {
+  document.getElementById('tab'+name).addEventListener('click', () => {
+    tabs.forEach(t => {
+      document.getElementById('tab'+t).classList.toggle('active', t === name);
+      document.getElementById('sec'+t).style.display = t === name ? 'block' : 'none';
+    });
+  });
+});
+
+// ─── Bit-size selector ───
+document.getElementById('bitSelect').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  document.querySelectorAll('#bitSelect button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+});
+
+function getSelectedBits() {
+  const active = document.querySelector('#bitSelect button.active');
+  return active ? parseInt(active.dataset.bits) : 1024;
+}
+
+// ─── Key Generation ───
+document.getElementById('generateBtn').addEventListener('click', () => {
+  const bits = getSelectedBits();
+  const progress = document.getElementById('keygenProgress');
+  const results = document.getElementById('keygenResults');
+  const status = document.getElementById('keyStatus');
+  const bar = document.getElementById('keygenBar');
+
+  progress.style.display = 'block';
+  results.style.display = 'none';
+  status.className = 'status-badge waiting';
+  status.textContent = 'Generating...';
+  bar.style.width = '15%';
+
+  // Use setTimeout to let UI update before heavy computation
+  setTimeout(() => {
+    bar.style.width = '40%';
+    setTimeout(() => {
+      try {
+        const startTime = performance.now();
+        const keys = RSA.generateKeyPair(bits);
+        const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+        generatedKeys = keys;
+
+        bar.style.width = '100%';
+
+        // Display keys
+        const pubPEM = RSA.formatPublicKeyPEM(keys.publicKey);
+        const privPEM = RSA.formatPrivateKeyPEM(keys.privateKey);
+
+        const pubDisplay = document.getElementById('pubKeyDisplay');
+        const privDisplay = document.getElementById('privKeyDisplay');
+        pubDisplay.innerHTML = `<button class="copy-btn ghost" data-copy="pubKeyDisplay">Copy</button>${escapeHtml(pubPEM)}`;
+        privDisplay.innerHTML = `<button class="copy-btn ghost" data-copy="privKeyDisplay">Copy</button>${escapeHtml(privPEM)}`;
+
+        results.style.display = 'block';
+        status.className = 'status-badge ready';
+        status.textContent = `${bits}-bit keys generated (${elapsed}s)`;
+
+        KeyVault.saveKeys('rsa', pubPEM, privPEM);
+
+        UI.showToast(`RSA ${bits}-bit key pair generated in ${elapsed}s`, 'success');
+
+        setTimeout(() => { progress.style.display = 'none'; }, 600);
+      } catch (err) {
+        bar.style.width = '0';
+        progress.style.display = 'none';
+        status.className = 'status-badge waiting';
+        status.textContent = 'Generation failed';
+        UI.showToast('Key generation failed: ' + err.message, 'error');
+      }
+    }, 50);
+  }, 50);
+});
+
+// ─── Copy buttons ───
+document.addEventListener('click', (e) => {
+  const copyBtn = e.target.closest('[data-copy]');
+  if (!copyBtn) return;
+  const targetId = copyBtn.dataset.copy;
+  const el = document.getElementById(targetId);
+  if (!el) return;
+  const text = el.textContent.replace('Copy', '').trim();
+  navigator.clipboard.writeText(text).then(() => {
+    copyBtn.textContent = '✓ Copied';
+    UI.showToast('Copied to clipboard', 'success', 1500);
+    setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2000);
+  });
+});
+
+// ─── Download keys ───
+document.getElementById('downloadPubKey').addEventListener('click', () => {
+  if (!generatedKeys) { UI.showToast('Generate keys first', 'error'); return; }
+  downloadFile('rsa_public_key.pem', RSA.formatPublicKeyPEM(generatedKeys.publicKey));
+});
+
+document.getElementById('downloadPrivKey').addEventListener('click', () => {
+  if (!generatedKeys) { UI.showToast('Generate keys first', 'error'); return; }
+  downloadFile('rsa_private_key.pem', RSA.formatPrivateKeyPEM(generatedKeys.privateKey));
+});
+
+function downloadFile(filename, content) {
+  const blob = new Blob([content], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  UI.showToast(`Downloaded ${filename}`, 'success');
+}
+
+// ─── "Use Generated Key" buttons (Modified to use KeyVault) ───
+document.getElementById('useGenPubKey').addEventListener('click', () => {
+  const keys = KeyVault.getKeys('rsa');
+  if (!keys.publicKey) { UI.showToast('Generate keys first', 'error'); return; }
+  document.getElementById('encPubKeyInput').value = keys.publicKey;
+  UI.showToast('Public key loaded', 'info');
+});
+
+document.getElementById('useGenPrivKey').addEventListener('click', () => {
+  const keys = KeyVault.getKeys('rsa');
+  if (!keys.privateKey) { UI.showToast('Generate keys first', 'error'); return; }
+  document.getElementById('decPrivKeyInput').value = keys.privateKey;
+  UI.showToast('Private key loaded', 'info');
+});
+
+document.getElementById('useGenPubKeyHyb').addEventListener('click', () => {
+  const keys = KeyVault.getKeys('rsa');
+  if (!keys.publicKey) { UI.showToast('Generate keys first', 'error'); return; }
+  document.getElementById('hybPubKeyInput').value = keys.publicKey;
+  UI.showToast('Public key loaded', 'info');
+});
+
+document.getElementById('useGenPrivKeyHyb').addEventListener('click', () => {
+  const keys = KeyVault.getKeys('rsa');
+  if (!keys.privateKey) { UI.showToast('Generate keys first', 'error'); return; }
+  document.getElementById('hybPrivKeyInput').value = keys.privateKey;
+  UI.showToast('Private key loaded', 'info');
+});
+
+// ─── RSA Encrypt ───
+document.getElementById('rsaEncryptBtn').addEventListener('click', () => {
+  const pemText = document.getElementById('encPubKeyInput').value.trim();
+  const plaintext = document.getElementById('encPlaintext').value.trim();
+  if (!pemText || !plaintext) { alert('Provide a public key and message'); return; }
+  try {
+    const pubKey = RSA.parsePublicKeyPEM(pemText);
+    const ciphertext = RSA.encrypt(plaintext, pubKey);
+    const output = document.getElementById('encCipherOutput');
+    output.innerHTML = `<button class="copy-btn ghost" data-copy="encCipherOutput">Copy</button>${ciphertext}`;
+    UI.showToast('Message encrypted with RSA', 'success');
+  } catch (err) {
+    UI.showToast('Encryption failed: ' + err.message, 'error');
+  }
+});
+
+// ─── RSA Decrypt ───
+document.getElementById('rsaDecryptBtn').addEventListener('click', () => {
+  const pemText = document.getElementById('decPrivKeyInput').value.trim();
+  const ciphertext = document.getElementById('decCipherInput').value.trim();
+  if (!pemText || !ciphertext) { alert('Provide a private key and ciphertext'); return; }
+  try {
+    const privKey = RSA.parsePrivateKeyPEM(pemText);
+    const plaintext = RSA.decrypt(ciphertext, privKey);
+    document.getElementById('decPlainOutput').textContent = plaintext;
+    document.getElementById('decPlainOutput').style.color = 'var(--text-primary)';
+    UI.showToast('Message decrypted successfully', 'success');
+  } catch (err) {
+    document.getElementById('decPlainOutput').textContent = 'Decryption failed — ' + err.message;
+    document.getElementById('decPlainOutput').style.color = 'var(--danger)';
+    UI.showToast('Decryption failed', 'error');
+  }
+});
+
+// ─── Hybrid RSA+AES Tabs ───
+document.getElementById('hybEncTab').addEventListener('click', () => {
+  document.getElementById('hybEncSection').style.display = 'block';
+  document.getElementById('hybDecSection').style.display = 'none';
+  document.getElementById('hybEncTab').classList.add('active');
+  document.getElementById('hybDecTab').classList.remove('active');
+});
+
+document.getElementById('hybDecTab').addEventListener('click', () => {
+  document.getElementById('hybEncSection').style.display = 'none';
+  document.getElementById('hybDecSection').style.display = 'block';
+  document.getElementById('hybDecTab').classList.add('active');
+  document.getElementById('hybEncTab').classList.remove('active');
+});
+
+// ─── Hybrid Encrypt ───
+document.getElementById('hybEncryptBtn').addEventListener('click', () => {
+  const pemText = document.getElementById('hybPubKeyInput').value.trim();
+  const plaintext = document.getElementById('hybPlaintext').value.trim();
+  if (!pemText || !plaintext) { alert('Provide a public key and message'); return; }
+  try {
+    const pubKey = RSA.parsePublicKeyPEM(pemText);
+    const result = RSA.hybridEncrypt(plaintext, pubKey);
+    const json = JSON.stringify(result, null, 2);
+    const output = document.getElementById('hybCipherOutput');
+    output.innerHTML = `<button class="copy-btn ghost" data-copy="hybCipherOutput">Copy</button>${escapeHtml(json)}`;
+    UI.showToast('Hybrid encrypted (RSA+AES)', 'success');
+  } catch (err) {
+    UI.showToast('Hybrid encryption failed: ' + err.message, 'error');
+  }
+});
+
+// ─── Hybrid Decrypt ───
+document.getElementById('hybDecryptBtn').addEventListener('click', () => {
+  const pemText = document.getElementById('hybPrivKeyInput').value.trim();
+  const cipherJson = document.getElementById('hybCipherInput').value.trim();
+  if (!pemText || !cipherJson) { alert('Provide a private key and encrypted package'); return; }
+  try {
+    const privKey = RSA.parsePrivateKeyPEM(pemText);
+    const payload = JSON.parse(cipherJson);
+    const plaintext = RSA.hybridDecrypt(payload, privKey);
+    document.getElementById('hybPlainOutput').textContent = plaintext;
+    document.getElementById('hybPlainOutput').style.color = 'var(--text-primary)';
+    UI.showToast('Hybrid decrypted successfully', 'success');
+  } catch (err) {
+    document.getElementById('hybPlainOutput').textContent = 'Decryption failed — ' + err.message;
+    document.getElementById('hybPlainOutput').style.color = 'var(--danger)';
+    UI.showToast('Hybrid decryption failed', 'error');
+  }
+});
+
+// ─── Utility ───
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+</script>
+</body>
+</html>
